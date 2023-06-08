@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix
 
 
 # Preprocess application_train.csv
@@ -19,6 +19,18 @@ def application_train(num_rows=None, nan_as_category=False):
     df['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL']
     df['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT']
     return df
+
+
+# Buisness score
+# Assigning a weight to FN and FP
+def cost(actual, pred, TN_val=0, FN_val=10, TP_val=0, FP_val=1):
+    matrix = confusion_matrix(actual, pred)
+    TN = matrix[0, 0]
+    FN = matrix[1, 0]
+    FP = matrix[0, 1]
+    TP = matrix[1, 1]
+    total_cost = TP * TP_val + TN * TN_val + FP * FP_val + FN * FN_val
+    return total_cost
 
 
 # Metrics
