@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
 
 
 # Preprocess application_train.csv
@@ -18,3 +19,11 @@ def application_train(num_rows=None, nan_as_category=False):
     df['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL']
     df['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT']
     return df
+
+
+# Metrics
+def eval_metrics(actual, pred):
+    accuracy = accuracy_score(actual, pred)
+    AUC = roc_auc_score(actual, pred)
+    f1 = f1_score(actual, pred)
+    return f1, AUC, accuracy
