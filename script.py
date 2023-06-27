@@ -1,6 +1,19 @@
+from collections import Counter
+
 import pandas as pd
 import numpy as np
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix
+from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix, make_scorer
+import warnings
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer, make_column_transformer, make_column_selector
+from imblearn.over_sampling import SMOTE
+from lightgbm import LGBMClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.dummy import DummyClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import GridSearchCV
+import matplotlib.pyplot as plt
 
 
 # Preprocess application_train.csv
@@ -39,3 +52,35 @@ def eval_metrics(actual, pred):
     AUC = roc_auc_score(actual, pred)
     f1 = f1_score(actual, pred)
     return f1, AUC, accuracy
+
+
+if __name__ == "__main__":
+    warnings.filterwarnings("ignore")
+    warnings.simplefilter("ignore")
+
+    # Split the data into training and test sets. (0.75, 0.25) split.
+    df_id = application_train(10000)
+    df = df_id.drop(["SK_ID_CURR"], axis=1)
+    train, test = train_test_split(df)
+
+    # The predicted column is "TARGET" (0 or 1)
+    train_x = train.drop(["TARGET"], axis=1)
+    test_x = test.drop(["TARGET"], axis=1)
+    train_y = train[["TARGET"]]
+    test_y = test[["TARGET"]]
+
+
+
+# analyse du déséquilibre de classe
+num_0 = df.TARGET.value_counts()[0]
+num_1 = df.TARGET.value_counts()[1]
+percentage_0 = num_0/(num_0+num_1)*100
+percentage_1 = num_1/(num_0+num_1)*100
+print("\nClass imbalance analysis: ")
+print(" - Percentage of 0: {}".format(percentage_0))
+print(" - Percentage of 1: {}".format(percentage_1))
+
+
+
+
+
