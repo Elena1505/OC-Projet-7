@@ -1,4 +1,3 @@
-from collections import Counter
 
 import pandas as pd
 import numpy as np
@@ -6,14 +5,14 @@ from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_m
 import warnings
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer, make_column_transformer, make_column_selector
-from imblearn.over_sampling import SMOTE
+from sklearn.compose import make_column_transformer, make_column_selector
 from lightgbm import LGBMClassifier
-from sklearn.pipeline import Pipeline
-from sklearn.dummy import DummyClassifier
-from sklearn.neighbors import KNeighborsClassifier
+from imblearn.pipeline import Pipeline
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV
-import matplotlib.pyplot as plt
+from sklearn.linear_model import LogisticRegression
 
 
 # Preprocess application_train.csv
@@ -69,18 +68,33 @@ if __name__ == "__main__":
     train_y = train[["TARGET"]]
     test_y = test[["TARGET"]]
 
+    # analyse du déséquilibre de classe
+    num_0 = df.TARGET.value_counts()[0]
+    num_1 = df.TARGET.value_counts()[1]
+    percentage_0 = num_0 / (num_0 + num_1) * 100
+    percentage_1 = num_1 / (num_0 + num_1) * 100
+    print("\nImbalanced class analysis: ")
+    print(" - Percentage of 0: {}".format(percentage_0))
+    print(" - Percentage of 1: {}".format(percentage_1))
 
+    # Pipeline that aggregates preprocessing steps (encoder + scaler + model)
+    ct = make_column_transformer(
+        (OneHotEncoder(handle_unknown="ignore", sparse=False), make_column_selector(dtype_include=object)),
+        (StandardScaler(with_mean=False), make_column_selector(dtype_include=np.number)),
+        remainder="passthrough")
 
-# analyse du déséquilibre de classe
-num_0 = df.TARGET.value_counts()[0]
-num_1 = df.TARGET.value_counts()[1]
-percentage_0 = num_0/(num_0+num_1)*100
-percentage_1 = num_1/(num_0+num_1)*100
-print("\nClass imbalance analysis: ")
-print(" - Percentage of 0: {}".format(percentage_0))
-print(" - Percentage of 1: {}".format(percentage_1))
+    steps = [("t", ct), ("model", LGBMClassifier())]
+    pipe = Pipeline(steps)
+    pipe.fit(train_x, train_y)
 
+    # GridSearchCV that allows to choose the best model for the problem
+    # I add the param class_weight="balanced" to deal with imbalanced class
+    param_grid = {"model": [LGBMClassifier(class_weight="balanced"),
+                            LogisticRegression(class_weight="balanced"),
+                            DecisionTreeClassifier(class_weight="balanced"),
+                            RandomForestClassifier(class_weight="balanced"),
+                            SVC(class_weight="balanced")]}
 
-
-
-
+    grid = GridSearchCV(pipe, param_grid, cv=5, scoring="f1")
+    grid.fit(train_x, train_y)
+    print("score ", grid.best_score_, "using ", grid.best_params_)
