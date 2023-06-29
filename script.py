@@ -1,4 +1,4 @@
-
+import mlflow
 import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_matrix, make_scorer
@@ -11,8 +11,10 @@ from imblearn.pipeline import Pipeline
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.linear_model import LogisticRegression
+from scipy.stats import randint as sp_randInt
+from scipy.stats import uniform as sp_randFloat
 
 
 # Preprocess application_train.csv
@@ -50,7 +52,8 @@ def eval_metrics(actual, pred):
     accuracy = accuracy_score(actual, pred)
     AUC = roc_auc_score(actual, pred)
     f1 = f1_score(actual, pred)
-    return f1, AUC, accuracy
+    bank_cost = cost(actual, pred)
+    return f1, AUC, accuracy, bank_cost
 
 
 if __name__ == "__main__":
@@ -83,7 +86,8 @@ if __name__ == "__main__":
         (StandardScaler(with_mean=False), make_column_selector(dtype_include=np.number)),
         remainder="passthrough")
 
-    steps = [("t", ct), ("model", LGBMClassifier())]
+    steps = [("t", ct),
+             ("model", LGBMClassifier())]
     pipe = Pipeline(steps)
     pipe.fit(train_x, train_y)
 
@@ -95,6 +99,60 @@ if __name__ == "__main__":
                             RandomForestClassifier(class_weight="balanced"),
                             SVC(class_weight="balanced")]}
 
-    grid = GridSearchCV(pipe, param_grid, cv=5, scoring="f1")
-    grid.fit(train_x, train_y)
-    print("score ", grid.best_score_, "using ", grid.best_params_)
+    grid = GridSearchCV(pipe, param_grid, cv=5, n_jobs=-1, scoring="f1")
+    grid.fit(train_x, train_y.values.ravel())
+    print("\nGridSearchCV: ")
+    print("    Best score ", grid.best_score_, "using ", grid.best_params_)
+
+    # Start the model with mlflow
+    with mlflow.start_run():
+        # Pipeline that aggregates preprocessing steps (encoder + scaler + model)
+        ct = make_column_transformer(
+            (OneHotEncoder(handle_unknown="ignore", sparse=False), make_column_selector(dtype_include=object)),
+            (StandardScaler(with_mean=False), make_column_selector(dtype_include=np.number)),
+            remainder="passthrough")
+
+        steps_model = [("t", ct),
+                       ("lgbmc", LGBMClassifier(class_weight="balanced"))]
+        pipe_model = Pipeline(steps_model)
+        pipe_model.fit(train_x, train_y)
+
+        # RandomizedSearchCV that allows to choose the best hyperparameters
+        param_random = {"lgbmc__num_leaves": sp_randInt(5, 50),
+                        "lgbmc__max_depth": sp_randInt(-1, 15),
+                        "lgbmc__learning_rate": sp_randFloat(0, 1.0),
+                        "lgbmc__n_estimators": sp_randInt(10, 100)}
+        random = RandomizedSearchCV(pipe_model, param_random, cv=5, n_jobs=-1, scoring="f1")
+        random.fit(train_x, train_y.values.ravel())
+        print("\nRandomizedSearchCV: ")
+        print("    Best score: ", random.best_score_, "using", random.best_params_)
+
+        pipe_model.set_params(**random.best_params_)
+        pipe_model.fit(train_x, train_y)
+
+        predicted_qualities = pipe_model.predict(test_x)
+
+        (f1, AUC, accuracy, bank_gain) = eval_metrics(test_y, predicted_qualities)
+
+        print("\n LGBMClassifier model using the bests hyperparameters: ")
+        print(" - Accuracy: %s" % accuracy)
+        print(" - AUC: %s" % AUC)
+        print(" - F1 score: %s" % f1)
+        print(" - Bank cost: %s" % bank_gain)
+
+        # Params recovery
+        mlflow.log_param("num_leaves", random.best_params_["lgbmc__num_leaves"])
+        mlflow.log_param("max_depth", random.best_params_["lgbmc__max_depth"])
+        mlflow.log_param("learning_rate", random.best_params_["lgbmc__learning_rate"])
+        mlflow.log_param("n_estimators", random.best_params_["lgbmc__n_estimators"])
+
+        # Metrics recovery
+        mlflow.log_metric("accuracy", accuracy)
+        mlflow.log_metric("AUC", AUC)
+        mlflow.log_metric("f1_score", f1)
+        mlflow.log_metric("bank_cost", bank_gain)
+
+
+
+
+
